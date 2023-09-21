@@ -122,6 +122,9 @@ public class MRServiceWrapper : MonoBehaviour
             }
         }
     }
+    /*
+        Unity doesn't support Unity out of the box.
+    */
     public IEnumerator GetTaskPreview(string taskId, Action<byte[]> callback)
     {
         using (UnityWebRequest www = UnityWebRequest.Get(BASE_URL + "/tasks/" + taskId + "/preview"))

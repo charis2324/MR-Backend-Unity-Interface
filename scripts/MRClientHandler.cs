@@ -9,19 +9,19 @@ using System.Collections;
 
 public class MRClientHandler : MonoBehaviour
 {
-    private GenerationServiceWrapper generationServiceWrapper;
+    public MRServiceWrapper generationServiceWrapper;
     private void Start()
     {
-        DebugDisplay debugDisplay = FindObjectOfType<DebugDisplay>();
-        debugDisplay.AddMessage("Generate an apple.");
-        GenerateModelMesh("an apple", 4f);
+        //DebugDisplay debugDisplay = FindObjectOfType<DebugDisplay>();
+        //debugDisplay.AddMessage("Generate an apple");
+        GenerateModelMesh("an apple", 15f);
     }
     public void LoadOBJFromFileInEditor()
     {
 #if UNITY_EDITOR
         string path = EditorUtility.OpenFilePanel("Overwrite with .obj", "", "obj");
         if (path.Length != 0) {
-            var mesh = LoadFromFile(path);
+            var mesh = LoadOBJFromFile(path);
 
             // Add the mesh to a new GameObject.
             var meshFilter = gameObject.GetComponent<MeshFilter>();
@@ -47,13 +47,13 @@ public class MRClientHandler : MonoBehaviour
     public static Mesh LoadOBJFromFile(string path)
     {
         string[] lines = File.ReadAllLines(path);
-        return ParseLines(lines);
+        return OBJParseLines(lines);
 
     }
     public static Mesh LoadOBJFromString(string input)
     {
         string[] lines = input.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-        return ParseLines(lines);
+        return OBJParseLines(lines);
     }
     public static Mesh OBJParseLines(string[] lines)
     {
@@ -106,14 +106,14 @@ public class MRClientHandler : MonoBehaviour
     }
     public void GenerateModelMesh(string prompt, float guidance_scale = 15f)
     {
-        generationServiceWrapper = GetComponent<GenerationServiceWrapper>();
+        generationServiceWrapper = GetComponent<MRServiceWrapper>();
         if (generationServiceWrapper == null)
         {
-            generationServiceWrapper = gameObject.AddComponent<GenerationServiceWrapper>();
+            generationServiceWrapper = gameObject.AddComponent<MRServiceWrapper>();
         }
         generationServiceWrapper.GenerateMeshAndStartPolling(prompt, guidance_scale, 1000, (string objStr) =>
         {
-            var newMesh = LoadFromString(objStr);
+            var newMesh = LoadOBJFromString(objStr);
             AppleGeneratedMesh(newMesh);
         });
     }
@@ -137,5 +137,10 @@ public class MRClientHandler : MonoBehaviour
 
 
         meshRenderer.material = new Material(Shader.Find("Particles/Standard Unlit"));
+    }
+    public void GetTaskStatusById(string taskId, Action<TaskStatus> callback) {
+        StartCoroutine(generationServiceWrapper.GetTaskStatus(taskId, (TaskStatus taskStatus) => {
+            callback(taskStatus);
+        }));
     }
 }

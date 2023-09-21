@@ -5,6 +5,8 @@ using UnityEngine;
 public class MRClientHandlerEditor : Editor
 {
     string textPrompt = "a recliner for relaxing";
+    string taskId = "";
+    string result = "";
     float guidanceScale = 15f;
 
     public override void OnInspectorGUI()
@@ -30,5 +32,17 @@ public class MRClientHandlerEditor : Editor
         {
             myScript.GenerateModelMesh(textPrompt, guidanceScale);
         }
+
+        // For call the rest of APIs
+        taskId = EditorGUILayout.TextField("Task ID", taskId);
+        if (GUILayout.Button("Check Task Status"))
+        {
+            Debug.Log("taskId " + taskId);
+
+            myScript.GetTaskStatusById(taskId, (TaskStatus taskStatus) => {
+                result = taskStatus.status;
+            });
+        }
+        EditorGUILayout.LabelField("Result", result);
     }
 }
