@@ -1,48 +1,75 @@
+using System.Security.Cryptography;
 using UnityEditor;
 using UnityEngine;
 
 [CustomEditor(typeof(MRClientHandler))]
 public class MRClientHandlerEditor : Editor
 {
-    string textPrompt = "a recliner for relaxing";
-    string taskId = "";
-    string result = "";
-    float guidanceScale = 15f;
-
+    uint skip = 0;
+    uint limit = 10;
+    string furnitureId = string.Empty;
     public override void OnInspectorGUI()
     {
-        DrawDefaultInspector();
-
         MRClientHandler myScript = (MRClientHandler)target;
-        // Load OBJ File button
-        if (GUILayout.Button("Load OBJ File"))
+        DrawDefaultInspector();
+        EditorGUILayout.TextField("Login Code Expiration Duration", myScript.loginCodeExpirationDuration.ToString());
+
+        if (GUILayout.Button("Get Login Code"))
         {
-            myScript.LoadOBJFromFileInEditor();
+            myScript.GetLoginCode();
+            Debug.Log(string.Format("Login Code: {0}", myScript.loginCode));
+            Debug.Log(string.Format("Expire in: {0}", myScript.loginCodeExpirationDuration.ToString()));
         }
-        // Text prompt input field
-        textPrompt = EditorGUILayout.TextField("Text Prompt", textPrompt);
-
-        // Guidance scale input field
-        guidanceScale = EditorGUILayout.FloatField("Guidance Scale", guidanceScale);
-
-
-
-        // Generate Model Mesh button
-        if (GUILayout.Button("Generate Model Mesh"))
+        if (GUILayout.Button("Login With Code"))
         {
-            myScript.GenerateModelMesh(textPrompt, guidanceScale);
+            myScript.LoginWithLoginCode();
+            Debug.Log(string.Format("Login Code: {0}", myScript.accessToken));
         }
-
-        // For call the rest of APIs
-        taskId = EditorGUILayout.TextField("Task ID", taskId);
-        if (GUILayout.Button("Check Task Status"))
+        if (GUILayout.Button("Logout"))
         {
-            Debug.Log("taskId " + taskId);
+            myScript.Logout();
+            Debug.Log(string.Format("Login Code: {0}", myScript.accessToken));
+        }
+        skip = (uint)EditorGUILayout.IntField("skip", (int)skip);
+        limit = (uint)EditorGUILayout.IntField("limit", (int)limit);
 
-            myScript.GetTaskStatusById(taskId, (TaskStatus taskStatus) => {
-                result = taskStatus.status;
+        //GetSelfInfo
+        if (GUILayout.Button("Get Self Info"))
+        {
+            myScript.GetSelfInfo((res) =>
+            {
+                Debug.Log(string.Format("Furniture Info:\n{0}", myScript.selfInfo.ToString()));
             });
         }
-        EditorGUILayout.LabelField("Result", result);
+        if (GUILayout.Button("Get Furniture Info"))
+        {
+            myScript.GetFurnitureInfo(skip, limit, (res) =>
+            {
+                Debug.Log(string.Format("Furniture Info:\n{0}", myScript.furnitureInfoList.ToString()));
+            });
+        }
+        if (GUILayout.Button("Get Furniture Info from Self"))
+        {
+            myScript.GetAllFurnitureInfoByUser((res) =>
+            {
+                Debug.Log(string.Format("My Furniture Info:\n{0}", myScript.furnitureInfoByUserList.ToString()));
+            });
+        }
+        furnitureId = EditorGUILayout.TextField("Furniture ID", furnitureId);
+        if (GUILayout.Button("Get Furniture OBJ"))
+        {
+            myScript.GetObjById(furnitureId, (res) =>
+            {
+                Debug.Log(string.Format("Furniture OBJ:\n{0}", myScript.obj_string));
+            });
+        }
+        if (EditorGUI.EndChangeCheck())
+        {
+            if (skip < 0)
+                skip = 0;
+            if (limit < 0)
+                limit = 0;
+            EditorUtility.SetDirty(myScript);
+        }
     }
 }
