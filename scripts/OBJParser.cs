@@ -5,30 +5,25 @@ using UnityEngine;
 
 public class OBJParser
 {
-    public static Mesh LoadOBJFromFile(string path)
-    {
+    public static Mesh LoadOBJFromFile(string path) {
         string[] lines = File.ReadAllLines(path);
         return OBJParseLines(lines);
 
     }
-    public static Mesh LoadOBJFromString(string input)
-    {
+    public static Mesh LoadOBJFromString(string input) {
         string[] lines = input.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
         return OBJParseLines(lines);
     }
-    public static Mesh OBJParseLines(string[] lines)
-    {
+    public static Mesh OBJParseLines(string[] lines) {
 
         List<Color> colors = new List<Color>();
         List<Vector3> vertices = new List<Vector3>();
         List<int> triangles = new List<int>();
 
-        foreach (string line in lines)
-        {
+        foreach (string line in lines) {
             string[] data = line.Split(' ');
 
-            switch (data[0])
-            {
+            switch (data[0]) {
                 case "v":
                     // Parse the x, y, z values and apply rotation.
                     Vector3 vertex = new Vector3(
@@ -65,18 +60,15 @@ public class OBJParser
         mesh.RecalculateTangents();
         return mesh;
     }
-    public static void AppleMesh(GameObject gameObject, Mesh mesh)
-    {
+    public static void AppleMesh(GameObject gameObject,Mesh mesh) {
         // Add the mesh to a new GameObject.
-        if (gameObject.GetComponent<MeshFilter>() == null)
-        {
+        if (gameObject.GetComponent<MeshFilter>() == null) {
             gameObject.AddComponent<MeshFilter>();
         }
         var meshFilter = gameObject.GetComponent<MeshFilter>();
         meshFilter.mesh = mesh;
 
-        if (gameObject.GetComponent<MeshRenderer>() == null)
-        {
+        if (gameObject.GetComponent<MeshRenderer>() == null) {
             gameObject.AddComponent<MeshRenderer>();
         }
         // Add a MeshRenderer so the mesh becomes visible.
