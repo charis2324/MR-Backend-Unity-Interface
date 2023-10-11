@@ -3,11 +3,8 @@
 using UnityEngine;
 using System;
 using System.Xml;
-using System.Collections;
-using System.IO;
-using UnityEditor.PackageManager.Requests;
-using UnityEngine.Networking;
 using UnityEngine.UI;
+using MRBackend;
 
 public class MRClientHandler : MonoBehaviour
 {
@@ -29,8 +26,8 @@ public class MRClientHandler : MonoBehaviour
     {
         StartCoroutine(_mrServiceWrapper.GetLoginCode((response) =>
         {
-            loginCode = response.login_code;
-            loginCodeExpirationDuration = XmlConvert.ToTimeSpan(response.expiration_duration);
+            loginCode = response.LoginCode;
+            loginCodeExpirationDuration = XmlConvert.ToTimeSpan(response.ExpirationDuration);
             callback?.Invoke(response);
         }));
     }
@@ -43,7 +40,7 @@ public class MRClientHandler : MonoBehaviour
         }
         StartCoroutine(_mrServiceWrapper.LoginWithCode(loginCode, (response) =>
         {
-            accessToken = response.access_token;
+            accessToken = response.AccessToken;
             callback?.Invoke(response);
         }));
     }
@@ -57,8 +54,10 @@ public class MRClientHandler : MonoBehaviour
         StartCoroutine(_mrServiceWrapper.GetSelfInfo(accessToken, (response) =>
         {
             selfInfo = response;
-            userUuid = response.uuid;
+            userUuid = response.Uuid;
+            Debug.Log(string.Format("User uuid: {0}", userUuid));
             callback?.Invoke(response);
+
         }));
     }
     public void Logout()
@@ -86,7 +85,7 @@ public class MRClientHandler : MonoBehaviour
             callback?.Invoke(res);
         }));
     }
-    public void GetObjById(string uuid, Action<string> callback = null)
+    public void GetFurnitureOBJ(string uuid, Action<string> callback = null)
     {
 
         StartCoroutine(_mrServiceWrapper.GetFurnitureOBJ(uuid, (res) =>
@@ -95,17 +94,10 @@ public class MRClientHandler : MonoBehaviour
             callback?.Invoke(res);
         }));
     }
-    public void GetTaskStatusById(string taskId, Action<TaskStatus> callback)
-    {
-        StartCoroutine(_mrServiceWrapper.GetTaskStatus(taskId, (TaskStatus taskStatus) =>
-        {
-            callback(taskStatus);
-        }));
-    }
-    public void GetPreviewById(string uuid, Action<byte[]> callback = null)
+    public void GetFurniturePreview(string uuid, Action<byte[]> callback = null)
     {
 
-        StartCoroutine(_mrServiceWrapper.GetTaskPreview(uuid, return_png: true, (res) =>
+        StartCoroutine(_mrServiceWrapper.GetFurniturePreview(uuid, return_png: true, (res) =>
         {
             Display(res);
             callback?.Invoke(res);

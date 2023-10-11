@@ -1,392 +1,436 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
-using System.Xml;
 using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.Networking;
 using Object = System.Object;
 
-public sealed class MRServiceWrapper : MonoBehaviour
+namespace MRBackend
 {
-    [SerializeField]
-    private string BASE_URL = "https://2778-123-205-105-56.ngrok-free.app"; // Replace with your base url
-    private static MRServiceWrapper _instance;
-    private static readonly Object _lock = new();
-    private MRServiceWrapper() { }
-    public static MRServiceWrapper Instance()
+    public sealed class MRServiceWrapper : MonoBehaviour
     {
-        if (_instance == null)
+        [SerializeField]
+        private string BASE_URL = "http://127.0.0.1:8000"; // Replace with your base url
+        private static MRServiceWrapper _instance;
+        private static readonly Object _lock = new();
+        private MRServiceWrapper() { }
+        public static MRServiceWrapper Instance()
         {
-            lock (_lock)
+            if (_instance == null)
             {
-                if (_instance == null)
+                lock (_lock)
                 {
-                    _instance = new MRServiceWrapper();
+                    if (_instance == null)
+                    {
+                        _instance = new MRServiceWrapper();
+                    }
+                }
+                _instance = new MRServiceWrapper();
+            }
+            return _instance;
+        }
+        public IEnumerator GetFurnitureOBJ(string uuid, Action<string> successCallback, Action<string> errorCallback = null)
+        {
+            yield return new GetFurnitureOBJCommand(uuid, BASE_URL).Execute(successCallback, errorCallback);
+        }
+        public IEnumerator GetFurniturePreview(string uuid, bool return_png, Action<byte[]> successCallback, Action<string> errorCallback = null)
+        {
+            yield return new GetFurniturePreviewCommand(uuid, return_png, BASE_URL).Execute(successCallback, errorCallback);
+        }
+        public IEnumerator GetLoginCode(Action<LoginCodeResponse> successCallback, Action<string> errorCallback = null)
+        {
+            Debug.Log(string.Format("[MRServiceWrapper] GetLoginCode -> BASE_URL: {0}", BASE_URL));
+            yield return new GetLoginCodeCommand(BASE_URL).Execute(successCallback, errorCallback);
+        }
+
+        public IEnumerator LoginWithCode(string code, Action<AccessTokenResponse> successCallback, Action<string> errorCallback = null)
+        {
+            yield return new LoginWithCodeCommand(code, BASE_URL).Execute(successCallback, errorCallback);
+        }
+        public IEnumerator GetAllFurnitureInfoByUser(string user_uuid, Action<FurnitureInfoList> successCallback, Action<string> errorCallback = null)
+        {
+            yield return new GetAllFurnitureInfoByUserCommand(user_uuid, BASE_URL).Execute(successCallback, errorCallback);
+        }
+        public IEnumerator GetFurnitureInfo(uint skip, uint limit, Action<FurnitureInfoList> successCallback, Action<string> errorCallback = null)
+        {
+            yield return new GetFurnitureInfoCommand(skip, limit, BASE_URL).Execute(successCallback, errorCallback);
+        }
+        public IEnumerator GetSelfInfo(string access_token, Action<UserInfo> successCallback, Action<string> errorCallback = null)
+        {
+            yield return new GetSelfInfoCommand(access_token, BASE_URL).Execute(successCallback, errorCallback);
+        }
+    }
+    public class HttpCallBuilder
+    {
+        private string baseUrl;
+        private string url;
+        private Dictionary<string, string> headers = new Dictionary<string, string>();
+        private string method = "GET";
+        private string body;
+        public HttpCallBuilder WithBaseUrl(string baseUrl)
+        {
+
+            this.baseUrl = baseUrl;
+            Debug.Log(string.Format("[HttpCallBuilder] WithBaseUrl -> this.baseUrl: {0}", this.baseUrl));
+            return this;
+        }
+        public HttpCallBuilder WithUrl(string url)
+        {
+
+            this.url = url;
+            return this;
+        }
+
+        public HttpCallBuilder WithHeader(string headerName, string headerValue)
+        {
+            headers.Add(headerName, headerValue);
+            return this;
+        }
+        //WithHeader("Content-Type", "application/json")
+        public HttpCallBuilder WithJsonHeader()
+        {
+            headers.Add("Content-Type", "application/json");
+            return this;
+        }
+        public HttpCallBuilder WithNgrokHeader()
+        {
+            headers.Add("ngrok-skip-browser-warning", "whatever");
+            return this;
+        }
+        public HttpCallBuilder WithAccessTokenHeader(string accessToken)
+        {
+            headers.Add("Authorization", "Bearer " + accessToken);
+            return this;
+        }
+        public HttpCallBuilder WithMethod(string method)
+        {
+            this.method = method;
+            return this;
+        }
+
+        public HttpCallBuilder WithBody(string body)
+        {
+            this.body = body;
+            return this;
+        }
+
+        public UnityWebRequest Build()
+        {
+            UnityWebRequest www;
+            Debug.Log(string.Format("[HttpCallBuilder] Build -> baseUrl + url: {0}", baseUrl + url));
+            if (method == "POST")
+            {
+                www = UnityWebRequest.Post(baseUrl + url, "POST");
+                byte[] bodyRaw = Encoding.UTF8.GetBytes(body);
+                www.uploadHandler?.Dispose();
+                www.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                www.downloadHandler = new DownloadHandlerBuffer();
+            }
+            else
+            {
+                www = UnityWebRequest.Get(baseUrl + url);
+            }
+
+            foreach (var header in headers)
+            {
+                www.SetRequestHeader(header.Key, header.Value);
+            }
+
+            return www;
+        }
+    }
+    public interface IHttpCommand<T>
+    {
+        IEnumerator Execute(Action<T> onSuccess, Action<string> onError);
+    }
+    public abstract class CommandBase
+    {
+        protected string baseUrl;
+        public CommandBase(string baseUrl)
+        {
+            this.baseUrl = baseUrl;
+        }
+        protected IEnumerator ProcessRequestInternal(HttpCallBuilder builder, Action<string> errorCallback, Func<UnityWebRequest, bool> processData)
+        {
+            using (UnityWebRequest www = builder.Build())
+            {
+                Debug.Log($"HTTP Method: {www.method}");
+                Debug.Log($"URL: {www.url}");
+                yield return www.SendWebRequest();
+
+                if (www.result != UnityWebRequest.Result.Success)
+                {
+                    Debug.Log(www.error);
+                    errorCallback?.Invoke(www.error);
+                }
+                else
+                {
+                    processData(www);
                 }
             }
-            _instance = new MRServiceWrapper();
         }
-        return _instance;
-    }
-    public void GenerateMeshAndStartPolling(string access_token, string prompt, float guidanceScale, int pollingRateMilliseconds, Action<string> callback)
-    {
-        StartCoroutine(GenerateMesh(access_token, prompt, guidanceScale, (GenerationTaskResponse task) =>
+
+        protected IEnumerator ProcessRequest<T>(HttpCallBuilder builder, Action<T> successCallback, Action<string> errorCallback = null) where T : class
         {
-
-            StartPollingTaskStatus(task.task_id, task.estimated_duration, pollingRateMilliseconds, callback);
-        }));
-    }
-
-    public IEnumerator GenerateMesh(string access_token, string prompt, float guidanceScale, Action<GenerationTaskResponse> successCallback, Action<string> errorCallback = null)
-    {
-
-        var requestPayload = new GenerationTaskRequest()
-        {
-            prompt = prompt,
-            guidance_scale = guidanceScale
-        };
-
-        var json = JsonUtility.ToJson(requestPayload);
-        var url = BASE_URL + "/generate";
-        using (var www = UnityWebRequest.Post(url, "POST"))
-        using (var uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json)))
-        {
-            www.uploadHandler.Dispose(); // <- Unity 沒有正確地對原始 uploadHandler 進行垃圾回收。 需要手動處置。
-            www.uploadHandler = uploadHandler;
-            www.downloadHandler = new DownloadHandlerBuffer();
-            www.SetRequestHeader("Content-Type", "application/json");
-
-            // Set the Authorization header
-            www.SetRequestHeader("Authorization", "Bearer " + access_token);
-
-
-            Debug.Log($"HTTP Method: {www.method}");
-            Debug.Log($"URL: {www.url}");
-            www.SetRequestHeader("ngrok-skip-browser-warning", "any_value_here");
-            yield return www.SendWebRequest();
-
-            if (www.result != UnityWebRequest.Result.Success)
+            return ProcessRequestInternal(builder, errorCallback, www =>
             {
-                Debug.Log(www.error);
-                errorCallback?.Invoke(www.error);
-            }
-            else
-            {
-                GenerationTaskResponse response = JsonUtility.FromJson<GenerationTaskResponse>(www.downloadHandler.text);
+                T response = JsonConvert.DeserializeObject<T>(www.downloadHandler.text);
                 successCallback(response);
-            }
+                return true;
+            });
         }
-    }
-    private void StartPollingTaskStatus(string taskId, string estimatedDuration, int pollingRateMilliseconds, Action<string> callback)
-    {
-        TimeSpan duration = XmlConvert.ToTimeSpan(estimatedDuration);
-        Debug.Log($"Backend is generating. Estimated duration: {duration}");
-        StartCoroutine(PollTaskStatus(taskId, duration, pollingRateMilliseconds, callback));
-    }
 
-    private IEnumerator PollTaskStatus(string taskId, TimeSpan estimatedDuration, int pollingRateMilliseconds, Action<string> callback)
-    {
-        yield return new WaitForSecondsRealtime((float)estimatedDuration.TotalSeconds);
-
-        while (true)
+        protected IEnumerator ProcessRequestForBytes(HttpCallBuilder builder, Action<byte[]> successCallback, Action<string> errorCallback = null)
         {
-            TaskStatus taskStatus = null;
-            yield return GetTaskStatus(taskId, (status) => taskStatus = status);
-            Debug.Log($"Task Status: {taskStatus.status}");
-            if (taskStatus.status == TaskStatusEnum.completed.ToString())
+            return ProcessRequestInternal(builder, errorCallback, www =>
             {
-                yield return GetFurnitureOBJ(taskId, callback);
-                yield break;
-            }
-            else if (taskStatus.status == TaskStatusEnum.failed.ToString())
-            {
-                Debug.Log("Task failed");
-                yield break;
-            }
-
-            yield return new WaitForSecondsRealtime(pollingRateMilliseconds / 1000f); // Convert milliseconds to seconds
-        }
-    }
-
-    public IEnumerator GetTaskStatus(string taskId, Action<TaskStatus> successCallback, Action<string> errorCallback = null)
-    {
-        using (UnityWebRequest www = UnityWebRequest.Get(BASE_URL + "/tasks/" + taskId + "/status"))
-        {
-            Debug.Log($"HTTP Method: {www.method}");
-            Debug.Log($"URL: {www.url}");
-            www.SetRequestHeader("ngrok-skip-browser-warning", "any_value_here");
-            yield return www.SendWebRequest();
-
-            if (www.result != UnityWebRequest.Result.Success)
-            {
-                Debug.Log(www.error);
-                errorCallback?.Invoke(www.error);
-            }
-            else
-            {
-                TaskStatus response = JsonUtility.FromJson<TaskStatus>(www.downloadHandler.text);
-                successCallback(response);
-            }
-        }
-    }
-
-    public IEnumerator GetFurnitureOBJ(string uuid, Action<string> successCallback, Action<string> errorCallback = null)
-    {
-        using (UnityWebRequest www = UnityWebRequest.Get(BASE_URL + "/furnitures/" + uuid))
-        {
-            Debug.Log($"HTTP Method: {www.method}");
-            Debug.Log($"URL: {www.url}");
-            www.SetRequestHeader("ngrok-skip-browser-warning", "any_value_here");
-            yield return www.SendWebRequest();
-
-            if (www.result != UnityWebRequest.Result.Success)
-            {
-                Debug.Log(www.error);
-                errorCallback?.Invoke(www.error);
-            }
-            else
-            {
-                // Assuming the result is a text file. Adapt to your needs.
-                successCallback(www.downloadHandler.text);
-            }
-        }
-    }
-    /*
-        Unity doesn't support gif out of the box.
-    */
-    public IEnumerator GetTaskPreview(string taskId, bool return_png, Action<byte[]> successCallback, Action<string> errorCallback = null)
-    {
-        var return_png_string = return_png.ToString().ToLower();
-        using (UnityWebRequest www = UnityWebRequest.Get(BASE_URL + "/tasks/" + taskId + "/preview?return_png=" + return_png_string))
-        {
-            Debug.Log($"HTTP Method: {www.method}");
-            Debug.Log($"URL: {www.url}");
-            www.SetRequestHeader("ngrok-skip-browser-warning", "any_value_here");
-            yield return www.SendWebRequest();
-
-            if (www.result != UnityWebRequest.Result.Success)
-            {
-                Debug.Log(www.error);
-                errorCallback?.Invoke(www.error);
-            }
-            else
-            {
-                // Assuming the result is a gif file. Adapt to your needs.
                 successCallback(www.downloadHandler.data);
-            }
+                return true;
+            });
+        }
+        protected IEnumerator ProcessRequestForText(HttpCallBuilder builder, Action<string> successCallback, Action<string> errorCallback = null)
+        {
+            return ProcessRequestInternal(builder, errorCallback, www =>
+            {
+                successCallback(www.downloadHandler.text);
+                return true;
+            });
         }
     }
-    public IEnumerator GetLoginCode(Action<LoginCodeResponse> successCallback, Action<string> errorCallback = null)
+    public class GetLoginCodeCommand : CommandBase, IHttpCommand<LoginCodeResponse>
     {
-        using (UnityWebRequest www = UnityWebRequest.Get(BASE_URL + "/login_code"))
+        public GetLoginCodeCommand(string baseUrl) : base(baseUrl)
         {
-            Debug.Log($"HTTP Method: {www.method}");
-            Debug.Log($"URL: {www.url}");
-            www.SetRequestHeader("ngrok-skip-browser-warning", "any_value_here");
-            yield return www.SendWebRequest();
-            if (www.result != UnityWebRequest.Result.Success)
-            {
-                Debug.Log(www.error);
-                errorCallback?.Invoke(www.error);
-            }
-            else
-            {
-                LoginCodeResponse response = JsonUtility.FromJson<LoginCodeResponse>(www.downloadHandler.text);
-                // Assuming the result is a gif file. Adapt to your needs.
-                successCallback(response);
-            }
+            Debug.Log(string.Format("[HttpCommand] GetLoginCodeCommand -> baseUrl: {0}", baseUrl));
+        }
+        public IEnumerator Execute(Action<LoginCodeResponse> onSuccess, Action<string> onError)
+        {
+            HttpCallBuilder builder = new HttpCallBuilder()
+            .WithBaseUrl(baseUrl)
+            .WithUrl("/api/v1/auth/login-code")
+            .WithNgrokHeader();
+            yield return ProcessRequest(builder, onSuccess, onError);
         }
     }
-    public IEnumerator LoginWithCode(string code, Action<AccessTokenResponse> successCallback, Action<string> errorCallback = null)
+    public class LoginWithCodeCommand : CommandBase, IHttpCommand<AccessTokenResponse>
     {
-        var loginWithCodeRequest = new LoginWithCodeRequest
-        {
-            login_code = code
-        };
+        private string code;
 
-        var json = JsonUtility.ToJson(loginWithCodeRequest);
-        var url = BASE_URL + "/login_code/token";
-        using (var www = UnityWebRequest.Post(url, "POST"))
-        using (var uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json)))
+        public LoginWithCodeCommand(string code, string baseUrl) : base(baseUrl)
         {
-            www.uploadHandler.Dispose(); // <- Unity 沒有正確地對原始 uploadHandler 進行垃圾回收。 需要手動處置。
-            www.uploadHandler = uploadHandler;
-            www.downloadHandler = new DownloadHandlerBuffer();
-            www.SetRequestHeader("Content-Type", "application/json");
-
-            Debug.Log($"HTTP Method: {www.method}");
-            Debug.Log($"URL: {www.url}");
-            www.SetRequestHeader("ngrok-skip-browser-warning", "any_value_here");
-            yield return www.SendWebRequest();
-
-            if (www.result != UnityWebRequest.Result.Success)
-            {
-                Debug.Log(www.error);
-                errorCallback?.Invoke(www.error);
-            }
-            else
-            {
-                AccessTokenResponse response = JsonUtility.FromJson<AccessTokenResponse>(www.downloadHandler.text);
-                successCallback(response);
-            }
-        }
-    }
-    public IEnumerator GetAllFurnitureInfoByUser(string user_uuid, Action<FurnitureInfoList> successCallback, Action<string> errorCallback = null)
-    {
-        using (UnityWebRequest www = UnityWebRequest.Get(BASE_URL + "/users/" + user_uuid + "/model_info"))
-        {
-            Debug.Log($"HTTP Method: {www.method}");
-            Debug.Log($"URL: {www.url}");
-            www.SetRequestHeader("ngrok-skip-browser-warning", "any_value_here");
-            yield return www.SendWebRequest();
-            if (www.result != UnityWebRequest.Result.Success)
-            {
-                Debug.Log(www.error);
-                errorCallback?.Invoke(www.error);
-            }
-            else
-            {
-                FurnitureInfoList response = JsonConvert.DeserializeObject<FurnitureInfoList>(www.downloadHandler.text);
-                // Assuming the result is a gif file. Adapt to your needs.
-                successCallback(response);
-            }
-        }
-    }
-    public IEnumerator GetFurnitureInfo(uint skip, uint limit, Action<FurnitureInfoList> successCallback, Action<string> errorCallback = null)
-    {
-        using (UnityWebRequest www = UnityWebRequest.Get(BASE_URL + String.Format("/furnitures/info?skip={0}&limit={1}", skip, limit)))
-        {
-            Debug.Log($"HTTP Method: {www.method}");
-            Debug.Log($"URL: {www.url}");
-            www.SetRequestHeader("ngrok-skip-browser-warning", "any_value_here");
-            yield return www.SendWebRequest();
-            if (www.result != UnityWebRequest.Result.Success)
-            {
-                Debug.Log(www.error);
-                errorCallback?.Invoke(www.error);
-            }
-            else
-            {
-                FurnitureInfoList response = JsonConvert.DeserializeObject<FurnitureInfoList>(www.downloadHandler.text);
-                // Assuming the result is a gif file. Adapt to your needs.
-                successCallback(response);
-            }
-        }
-    }
-    public IEnumerator GetSelfInfo(string access_token, Action<UserInfo> successCallback, Action<string> errorCallback = null)
-    {
-        using (UnityWebRequest www = UnityWebRequest.Get(BASE_URL + string.Format("/user-info")))
-        {
-            Debug.Log($"HTTP Method: {www.method}");
-            Debug.Log($"URL: {www.url}");
-            www.SetRequestHeader("Authorization", "Bearer " + access_token);
-            www.SetRequestHeader("ngrok-skip-browser-warning", "any_value_here");
-            yield return www.SendWebRequest();
-            if (www.result != UnityWebRequest.Result.Success)
-            {
-                Debug.Log(www.error);
-                errorCallback?.Invoke(www.error);
-            }
-            else
-            {
-                UserInfo response = JsonUtility.FromJson<UserInfo>(www.downloadHandler.text);
-                // Assuming the result is a gif file. Adapt to your needs.
-                successCallback(response);
-            }
-        }
-    }
-}
-
-[Serializable]
-public class GenerationTaskRequest
-{
-    public string prompt;
-    public float guidance_scale;
-}
-[Serializable]
-public class GenerationTaskResponse
-{
-    public string task_id;
-    public string estimated_duration;// Stored as string in ISO8601 format
-
-}
-public enum TaskStatusEnum
-{
-    waiting,
-    processing,
-    completed,
-    failed
-}
-
-[Serializable]
-public class TaskStatus
-{
-    public string task_id;
-    public string status; // Stored as string
-    public string message;
-}
-[Serializable]
-public class LoginCodeResponse
-{
-    public string login_code;
-    public string expiration_duration;// Stored as string in ISO8601 format
-}
-[Serializable]
-public class LoginWithCodeRequest
-{
-    public string login_code;
-}
-[Serializable]
-public class AccessTokenResponse
-{
-    public string access_token;
-    public string token_type;
-}
-public class FurnitureInfo
-{
-    public string uuid { get; set; }
-    public string name { get; set; }
-    public string user_uuid { get; set; }
-    public string username { get; set; }
-    public string description { get; set; }
-    public int scale_type { get; set; }
-    public double scale_x { get; set; }
-    public double scale_y { get; set; }
-    public double scale_z { get; set; }
-    public string source { get; set; }
-    public override string ToString()
-    {
-        return String.Format("UUID: {0}, Name: {1}, User UUID: {2}, Username: {3}, Description: {4}, Scale Type: {5}, Scale X: {6}, Scale Y: {7}, Scale Z: {8}, Source: {9}", uuid, name, user_uuid, username, description, scale_type, scale_x, scale_y, scale_z, source);
-    }
-}
-public class FurnitureInfoList
-{
-    public List<FurnitureInfo> furniture_infos { get; set; }
-    public int total_furniture_count { get; set; }
-    public override string ToString()
-    {
-        var output = "";
-        foreach (var info in furniture_infos)
-        {
-            output += info.ToString() + "\n";
+            this.code = code;
         }
 
-        output += "Total Furniture Count: " + total_furniture_count;
+        public IEnumerator Execute(Action<AccessTokenResponse> onSuccess, Action<string> onError)
+        {
+            var loginWithCodeRequest = new LoginWithCodeRequest
+            {
+                LoginCode = code
+            };
 
-        return output;
+            var json = JsonConvert.SerializeObject(loginWithCodeRequest);
+
+            HttpCallBuilder builder = new HttpCallBuilder()
+                .WithBaseUrl(baseUrl)
+                .WithUrl("/api/v1/auth/token-with-login-code")
+                .WithMethod("POST")
+                .WithBody(json)
+                .WithJsonHeader()
+                .WithNgrokHeader();
+
+            yield return ProcessRequest(builder, onSuccess, onError);
+        }
     }
-}
-[Serializable]
-public class UserInfo
-{
-
-    public string uuid;
-    public string username;
-    public string created_at;
-    public override string ToString()
+    public class GetSelfInfoCommand : CommandBase, IHttpCommand<UserInfo>
     {
-        return String.Format("uuid: {0} username: {1} created_at: {2}", uuid, username, created_at);
+        private string accessToken;
+        public GetSelfInfoCommand(string accessToken, string baseUrl) : base(baseUrl)
+        {
+            this.accessToken = accessToken;
+        }
+
+        public IEnumerator Execute(Action<UserInfo> onSuccess, Action<string> onError)
+        {
+            HttpCallBuilder builder = new HttpCallBuilder()
+                .WithBaseUrl(baseUrl)
+                .WithUrl("/api/v1/me")
+                .WithAccessTokenHeader(accessToken)
+                .WithNgrokHeader();
+            yield return ProcessRequest(builder, onSuccess, onError);
+        }
+    }
+    public class GetAllFurnitureInfoByUserCommand : CommandBase, IHttpCommand<FurnitureInfoList>
+    {
+        private string userId;
+        public GetAllFurnitureInfoByUserCommand(string userId, string baseUrl) : base(baseUrl)
+        {
+            this.userId = userId;
+        }
+        public IEnumerator Execute(Action<FurnitureInfoList> onSuccess, Action<string> onError)
+        {
+            HttpCallBuilder builder = new HttpCallBuilder()
+                .WithBaseUrl(baseUrl)
+                .WithUrl(string.Format("/api/v1/users/{0}/furnitures/info", userId))
+                .WithNgrokHeader();
+            yield return ProcessRequest(builder, onSuccess, onError);
+        }
+    }
+    public class GetFurnitureInfoCommand : CommandBase, IHttpCommand<FurnitureInfoList>
+    {
+        private uint skip;
+        private uint limit;
+        public GetFurnitureInfoCommand(uint skip, uint limit, string baseUrl) : base(baseUrl)
+        {
+            this.skip = skip;
+            this.limit = limit;
+        }
+        public IEnumerator Execute(Action<FurnitureInfoList> onSuccess, Action<string> onError)
+        {
+            HttpCallBuilder builder = new HttpCallBuilder()
+                .WithBaseUrl(baseUrl)
+                .WithUrl(string.Format("/api/v1/furnitures/info?skip={0}&limit={1}", skip, limit))
+                .WithNgrokHeader();
+            yield return ProcessRequest(builder, onSuccess, onError);
+        }
+    }
+    public class GetFurnitureOBJCommand : CommandBase, IHttpCommand<string>
+    {
+        private string uuid;
+        public GetFurnitureOBJCommand(string uuid, string baseUrl) : base(baseUrl)
+        {
+            this.uuid = uuid;
+        }
+        public IEnumerator Execute(Action<string> onSuccess, Action<string> onError)
+        {
+            HttpCallBuilder builder = new HttpCallBuilder()
+                .WithBaseUrl(baseUrl)
+                .WithUrl(string.Format("/api/v1/furnitures/{0}", uuid))
+                .WithNgrokHeader();
+            yield return ProcessRequestForText(builder, onSuccess, onError);
+        }
+    }
+    public class GetFurniturePreviewCommand : CommandBase, IHttpCommand<byte[]>
+    {
+        private string uuid;
+        private bool returnPng;
+        public GetFurniturePreviewCommand(string uuid, bool returnPng, string baseUrl) : base(baseUrl)
+        {
+            this.uuid = uuid;
+            this.returnPng = returnPng;
+        }
+        public IEnumerator Execute(Action<byte[]> onSuccess, Action<string> onError)
+        {
+            HttpCallBuilder builder = new HttpCallBuilder()
+                .WithBaseUrl(baseUrl)
+                .WithUrl(string.Format("/api/v1/furnitures/{0}/preview?return_png={1}", uuid, returnPng.ToString().ToLower()))
+                .WithNgrokHeader();
+            yield return ProcessRequestForBytes(builder, onSuccess, onError);
+        }
+    }
+    [Serializable]
+    public class TaskStatus
+    {
+        [JsonProperty("task_id")]
+        public string TaskId { get; set; }
+
+        [JsonProperty("status")]
+        public string Status { get; set; } // Stored as string
+
+        [JsonProperty("message")]
+        public string Message { get; set; }
+    }
+
+    [Serializable]
+    public class LoginCodeResponse
+    {
+        [JsonProperty("login_code")]
+        public string LoginCode { get; set; }
+
+        [JsonProperty("expiration_duration")]
+        public string ExpirationDuration { get; set; } // Stored as string in ISO8601 format
+    }
+
+    [Serializable]
+    public class LoginWithCodeRequest
+    {
+        [JsonProperty("login_code")]
+        public string LoginCode { get; set; }
+    }
+
+    [Serializable]
+    public class AccessTokenResponse
+    {
+        [JsonProperty("access_token")]
+        public string AccessToken { get; set; }
+
+        [JsonProperty("token_type")]
+        public string TokenType { get; set; }
+    }
+
+    public class FurnitureInfo
+    {
+        [JsonProperty("uuid")]
+        public string Uuid { get; set; }
+
+        [JsonProperty("name")]
+        public string Name { get; set; }
+
+        [JsonProperty("user_uuid")]
+        public string UserUuid { get; set; }
+
+        [JsonProperty("username")]
+        public string Username { get; set; }
+
+        [JsonProperty("description")]
+        public string Description { get; set; }
+
+        [JsonProperty("scale_type")]
+        public int ScaleType { get; set; }
+
+        [JsonProperty("scale_x")]
+        public double ScaleX { get; set; }
+
+        [JsonProperty("scale_y")]
+        public double ScaleY { get; set; }
+
+        [JsonProperty("scale_z")]
+        public double ScaleZ { get; set; }
+
+        [JsonProperty("source")]
+        public string Source { get; set; }
+        public override string ToString()
+        {
+            return $"Uuid: {Uuid}, Name: {Name}, UserUuid: {UserUuid}, Username: {Username}, Description: {Description}, ScaleType: {ScaleType}, ScaleX: {ScaleX}, ScaleY: {ScaleY}, ScaleZ: {ScaleZ}, Source: {Source}";
+        }
+    }
+
+    public class FurnitureInfoList
+    {
+        [JsonProperty("furniture_infos")]
+        public List<FurnitureInfo> FurnitureInfos { get; set; }
+
+        [JsonProperty("total_furniture_count")]
+        public int TotalFurnitureCount { get; set; }
+        public override string ToString()
+        {
+            var furnitureInfos = FurnitureInfos.Aggregate("", (current, furnitureInfo) => current + (furnitureInfo + "\n"));
+            return $"FurnitureInfos:\n{furnitureInfos}, TotalFurnitureCount: {TotalFurnitureCount}";
+        }
+    }
+
+    [Serializable]
+    public class UserInfo
+    {
+        [JsonProperty("uuid")]
+        public string Uuid { get; set; }
+
+        [JsonProperty("username")]
+        public string Username { get; set; }
+
+        [JsonProperty("created_at")]
+        public string CreatedAt { get; set; }
     }
 }

@@ -39,7 +39,7 @@ public class MRClientHandlerEditor : Editor
         {
             myScript.GetSelfInfo((res) =>
             {
-                Debug.Log(string.Format("Furniture Info:\n{0}", myScript.selfInfo.ToString()));
+                Debug.Log(string.Format("User Info:\n{0}", myScript.userUuid.ToString()));
             });
         }
         if (GUILayout.Button("Get Furniture Info"))
@@ -59,7 +59,7 @@ public class MRClientHandlerEditor : Editor
         furnitureId = EditorGUILayout.TextField("Furniture ID", furnitureId);
         if (GUILayout.Button("Get Furniture OBJ"))
         {
-            myScript.GetObjById(furnitureId, (res) =>
+            myScript.GetFurnitureOBJ(furnitureId, (res) =>
             {
                 Debug.Log(string.Format("Furniture OBJ:\n{0}", myScript.obj_string));
                 Mesh mesh = OBJParser.LoadOBJFromString(myScript.obj_string);
@@ -68,7 +68,7 @@ public class MRClientHandlerEditor : Editor
         }
         if (GUILayout.Button("Get Furniture Preview"))
         {
-            myScript.GetPreviewById(furnitureId, (res) =>
+            myScript.GetFurniturePreview(furnitureId, (res) =>
             {
                 Debug.Log("Loaded Preview");
             });
