@@ -56,7 +56,15 @@ public class MRClientHandlerEditor : Editor
                 Debug.Log(string.Format("My Furniture Info:\n{0}", myScript.furnitureInfoByUserList.ToString()));
             });
         }
+
         furnitureId = EditorGUILayout.TextField("Furniture ID", furnitureId);
+        if (GUILayout.Button("Get Furniture Info By Id"))
+        {
+            myScript.GetFurnitureInfoById(furnitureId, (res) =>
+            {
+                Debug.Log(string.Format("Furniture Info:\n{0}", res));
+            });
+        }
         if (GUILayout.Button("Get Furniture OBJ"))
         {
             myScript.GetFurnitureOBJ(furnitureId, (res) =>
@@ -73,7 +81,11 @@ public class MRClientHandlerEditor : Editor
                 Debug.Log("Loaded Preview");
             });
         }
-
+        if (GUILayout.Button("Listen to controller"))
+        {
+            myScript.ListenToController(myScript.accessToken);
+            Debug.Log("Started...");
+        }
         if (EditorGUI.EndChangeCheck())
         {
             if (skip < 0)

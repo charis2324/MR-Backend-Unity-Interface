@@ -5,6 +5,7 @@ using System;
 using System.Xml;
 using UnityEngine.UI;
 using MRBackend;
+using System.Threading;
 
 public class MRClientHandler : MonoBehaviour
 {
@@ -22,6 +23,23 @@ public class MRClientHandler : MonoBehaviour
     public Canvas canvas; // assign in Inspector
     public RawImage rawImage;
 
+    private void Start()
+    {
+        //ListenToController(accessToken);
+    }
+    public void ListenToController(string accessToken)
+    {
+        CancellationTokenSource cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromMinutes(1));
+        //_mrServiceWrapper.ListenToController("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhc2QiLCJleHAiOjE2OTc2MTk4Njh9.Qxw3OjpogesI-GQgd61wGHWf5Pg6z6Xin4G9pbGH32Q", cts.Token);
+    }
+    public void GetFurnitureInfoById(string uuid, Action<FurnitureInfo> callback = null)
+    {
+        StartCoroutine(_mrServiceWrapper.GetFurnitureInfoById(uuid, (info) =>
+        {
+            callback?.Invoke(info);
+        }));
+    }
     public void GetLoginCode(Action<LoginCodeResponse> callback = null)
     {
         StartCoroutine(_mrServiceWrapper.GetLoginCode((response) =>
