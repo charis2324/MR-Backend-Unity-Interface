@@ -54,6 +54,10 @@ namespace MRBackend
         {
             yield return new GetAllFurnitureInfoByUserCommand(user_uuid, BASE_URL).Execute(successCallback, errorCallback);
         }
+        public IEnumerator GetFurnitureInfoById(string uuid, Action<FurnitureInfo> successCallback, Action<string> errorCallback = null)
+        {
+            yield return new GetFurnitureInfoByIdCommand(uuid, BASE_URL).Execute(successCallback, errorCallback);
+        }
         public IEnumerator GetFurnitureInfo(uint skip, uint limit, Action<FurnitureInfoList> successCallback, Action<string> errorCallback = null)
         {
             yield return new GetFurnitureInfoCommand(skip, limit, BASE_URL).Execute(successCallback, errorCallback);
@@ -274,6 +278,22 @@ namespace MRBackend
             HttpCallBuilder builder = new HttpCallBuilder()
                 .WithBaseUrl(baseUrl)
                 .WithUrl(string.Format("/api/v1/users/{0}/furnitures/info", userId))
+                .WithNgrokHeader();
+            yield return ProcessRequest(builder, onSuccess, onError);
+        }
+    }
+    public class GetFurnitureInfoByIdCommand : CommandBase, IHttpCommand<FurnitureInfo>
+    {
+        private string uuid;
+        public GetFurnitureInfoByIdCommand(string uuid, string baseUrl) : base(baseUrl)
+        {
+            this.uuid = uuid;
+        }
+        public IEnumerator Execute(Action<FurnitureInfo> onSuccess, Action<string> onError)
+        {
+            HttpCallBuilder builder = new HttpCallBuilder()
+                .WithBaseUrl(baseUrl)
+                .WithUrl(string.Format("/api/v1/furnitures/{0}/info", uuid))
                 .WithNgrokHeader();
             yield return ProcessRequest(builder, onSuccess, onError);
         }
