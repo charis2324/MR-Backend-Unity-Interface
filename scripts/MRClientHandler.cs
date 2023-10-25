@@ -22,10 +22,14 @@ public class MRClientHandler : MonoBehaviour
     public UserInfo selfInfo;
     public Canvas canvas; // assign in Inspector
     public RawImage rawImage;
+    [SerializeField]
+    public MRPollingController pollingController;
 
     private void Start()
     {
-        //ListenToController(accessToken);
+        ImportFurnitureEvent.OnEvent += (ImportFurnitureEvent) => { Debug.Log(string.Format("Imported Furniture: {0}", ImportFurnitureEvent.FurnitureUuid)); };
+        pollingController.StartSessionAndPoll();
+
     }
     public void ListenToController(string accessToken)
     {

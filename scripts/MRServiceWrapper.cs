@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
 using Object = System.Object;
@@ -31,6 +32,14 @@ namespace MRBackend
                 _instance = new MRServiceWrapper();
             }
             return _instance;
+        }
+        public IEnumerator CreatePollingControllerSession(string accessToken, Action<CreatePollingControllerSessionResponse> successCallback, Action<string> errorCallback = null)
+        {
+            yield return new CreatePollingControllerSessionCommand(accessToken, BASE_URL).Execute(successCallback, errorCallback);
+        }
+        public IEnumerator PollEventController(string accessToken, Action<JObject> successCallback, Action<string> errorCallback = null)
+        {
+            yield return new PollEventControllerCommand(accessToken, BASE_URL).Execute(successCallback, errorCallback);
         }
         public IEnumerator GetFurnitureOBJ(string uuid, Action<string> successCallback, Action<string> errorCallback = null)
         {
@@ -186,7 +195,15 @@ namespace MRBackend
                 return true;
             });
         }
-
+        protected IEnumerator ProcessRequestForJObject(HttpCallBuilder builder, Action<JObject> successCallback, Action<string> errorCallback = null)
+        {
+            return ProcessRequestInternal(builder, errorCallback, www =>
+            {
+                JObject json = JObject.Parse(www.downloadHandler.text);
+                successCallback(json);
+                return true;
+            });
+        }
         protected IEnumerator ProcessRequestForBytes(HttpCallBuilder builder, Action<byte[]> successCallback, Action<string> errorCallback = null)
         {
             return ProcessRequestInternal(builder, errorCallback, www =>
@@ -204,8 +221,51 @@ namespace MRBackend
             });
         }
     }
+    public class CreatePollingControllerSessionCommand : CommandBase, IHttpCommand<CreatePollingControllerSessionResponse>
+    {
+        private string accessToken;
+        public CreatePollingControllerSessionCommand(string accessToken, string baseUrl) : base(baseUrl)
+        {
+            Debug.Log(string.Format("[HttpCommand] CreatePollingControllerSessionCommand -> baseUrl: {0}", baseUrl));
+            this.accessToken = accessToken;
+        }
+
+        public IEnumerator Execute(Action<CreatePollingControllerSessionResponse> onSuccess, Action<string> onError)
+        {
+            HttpCallBuilder builder = new HttpCallBuilder()
+            .WithBaseUrl(baseUrl)
+            .WithUrl("/api/v1/controller/event/connect")
+            .WithAccessTokenHeader(accessToken)
+            .WithNgrokHeader();
+            yield return ProcessRequest(builder, onSuccess, onError);
+        }
+    }
+
+    public class PollEventControllerCommand : CommandBase, IHttpCommand<JObject>
+    {
+        private string accessToken;
+        public PollEventControllerCommand(string accessToken, string baseUrl) : base(baseUrl)
+        {
+            Debug.Log(string.Format("[HttpCommand] PollEventControllerCommand -> baseUrl: {0}", baseUrl));
+            this.accessToken = accessToken;
+        }
+        public IEnumerator Execute(Action<JObject> onSuccess, Action<string> onError)
+        {
+            HttpCallBuilder builder = new HttpCallBuilder()
+                .WithBaseUrl(baseUrl)
+                .WithUrl("/api/v1/controller/event/poll")
+                .WithAccessTokenHeader(accessToken)
+                .WithNgrokHeader();
+            yield return ProcessRequestForJObject(builder, onSuccess, onError);
+        }
+    }
+
+
     public class GetLoginCodeCommand : CommandBase, IHttpCommand<LoginCodeResponse>
     {
+
+
+
         public GetLoginCodeCommand(string baseUrl) : base(baseUrl)
         {
             Debug.Log(string.Format("[HttpCommand] GetLoginCodeCommand -> baseUrl: {0}", baseUrl));
@@ -453,4 +513,11 @@ namespace MRBackend
         [JsonProperty("created_at")]
         public string CreatedAt { get; set; }
     }
+    [Serializable]
+    public class CreatePollingControllerSessionResponse
+    {
+        [JsonProperty("detail")]
+        public string Detail { get; set; }
+    }
+
 }
